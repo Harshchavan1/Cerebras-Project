@@ -1,79 +1,160 @@
-# main.py
-import asyncio
 import os
+import asyncio
+from typing import List, Dict, Any
 from datetime import datetime
-from enhanced_literature_assistant import EnhancedLiteratureAssistant, Paper
 
-async def run_example():
-    """Example script to demonstrate the Literature Assistant."""
-    # Initialize with your Cerebras Cloud API key
-    api_key = os.getenv('CEREBRAS_CLOUD_API_KEY', 'your_api_key')
-    assistant = EnhancedLiteratureAssistant(api_key)
+from cerebras.cloud.sdk import Cerebras
 
-    # Create some sample papers for testing
+class EnhancedLiteratureAssistant:
+    def __init__(self, model_name: str = "llama3.1-8b"):
+        """
+        Initialize the Literature Assistant with Cerebras SDK.
+        
+        Args:
+            model_name (str): Name of the Cerebras model to use
+        """
+        # Retrieve API key from environment
+        api_key = "csk-3m4tcyxyvp9hwy9x4h3k38hpv8fkemy5mv3pdwhket5m4nxv"
+        #api_key = os.environ.get("CEREBRAS_API_KEY")
+        #if not api_key:
+        #    raise ValueError("CEREBRAS_API_KEY must be set in environment variables")
+        
+        # Create Cerebras client
+        self.client = Cerebras(api_key=api_key)
+        
+        # Selected model
+        self.model_name = model_name
+        
+        # Chat history and paper storage
+        self.chat_history: List[Dict[str, str]] = []
+        self.papers: Dict[str, Dict[str, Any]] = {}
+
+    async def process_paper(self, paper_content: str) -> Dict[str, Any]:
+        """
+        Process a research paper using Cerebras model.
+        
+        Args:
+            paper_content (str): Full text of the paper
+        
+        Returns:
+            Dict with analysis results
+        """
+        try:
+            # Use chat completion for paper analysis
+            response = self.client.chat.completions.create(
+                messages=[{
+                    "role": "user", 
+                    "content": f"Analyze this research paper and provide a comprehensive summary, key concepts, and research methods:\n\n{paper_content}"
+                }],
+                model=self.model_name
+            )
+            
+            # Extract analysis details
+            analysis = {
+                'summary': response.choices[0].message.content,
+                'tokens_used': response.usage.total_tokens,
+                'processing_time': response.time_info.total_time
+            }
+            
+            return analysis
+        except Exception as e:
+            print(f"Paper analysis error: {e}")
+            return {}
+
+    async def semantic_search(self, query: str, papers: List[Dict]) -> List[Dict]:
+        """
+        Perform semantic search across papers using Cerebras model.
+        
+        Args:
+            query (str): Search query
+            papers (List[Dict]): List of papers to search
+        
+        Returns:
+            List of matching papers with relevance scores
+        """
+        try:
+            # Use chat completion for semantic search
+            response = self.client.chat.completions.create(
+                messages=[{
+                    "role": "user", 
+                    "content": f"Rank the following papers by relevance to this query: '{query}'\n\n" + 
+                               "\n---\n".join([p.get('title', '') + ": " + p.get('content', '') for p in papers])
+                }],
+                model=self.model_name
+            )
+            
+            # Parse response to extract ranked papers
+            ranked_results = response.choices[0].message.content
+            
+            # Additional processing could be done here to extract precise rankings
+            return [
+                {
+                    'title': paper['title'],
+                    'content': paper['content'],
+                    'relevance_description': ranked_results
+                } for paper in papers
+            ]
+        except Exception as e:
+            print(f"Semantic search error: {e}")
+            return []
+
+    def add_paper(self, title: str, content: str):
+        """
+        Add a paper to the assistant's collection.
+        
+        Args:
+            title (str): Title of the paper
+            content (str): Full text of the paper
+        """
+        self.papers[title] = {
+            'title': title,
+            'content': content,
+            'added_timestamp': datetime.now().isoformat()  # Cross-platform timestamp
+        }
+
+async def main():
+    # Initialize the literature assistant
+    assistant = EnhancedLiteratureAssistant()
+
+    # Add sample papers
     sample_papers = [
-        Paper(
-            title="Deep Learning Advances",
-            content="This paper discusses recent advances in deep learning...",
-            sections={"intro": "Introduction to deep learning...", "methods": "Our methods..."},
-            references=["Paper1", "Paper2"],
-            concepts=["deep learning", "neural networks"],
-            processed_date=datetime.now().strftime("%Y-%m-%d")
-        ),
-        Paper(
-            title="Natural Language Processing",
-            content="Recent developments in NLP have shown...",
-            sections={"intro": "Introduction to NLP...", "results": "Our findings..."},
-            references=["Paper3", "Paper4"],
-            concepts=["NLP", "transformers"],
-            processed_date=datetime.now().strftime("%Y-%m-%d")
-        )
+        {
+            'title': 'Advanced Machine Learning Techniques',
+            'content': """This research paper explores cutting-edge machine learning algorithms 
+            with a focus on transformer architectures and their applications in natural 
+            language processing. Key contributions include novel attention mechanisms 
+            and improved training strategies for large language models."""
+        },
+        {
+            'title': 'Neural Network Optimization Strategies',
+            'content': """An in-depth analysis of optimization techniques for neural networks, 
+            discussing gradient descent variants, regularization methods, and emerging 
+            approaches to improve model convergence and generalization."""
+        }
     ]
 
-    # Generate embeddings for sample papers
-    print("Generating embeddings for sample papers...")
+    # Process and add papers
     for paper in sample_papers:
-        paper.embedding = await assistant.generate_embedding(paper.content)
-        assistant.papers[paper.title] = paper
-        # Update citation graph
-        for ref in paper.references:
-            assistant.citation_graph.add_edge(paper.title, ref)
+        assistant.add_paper(paper['title'], paper['content'])
+        
+        # Analyze each paper
+        analysis = await assistant.process_paper(paper['content'])
+        print(f"\nAnalysis for {paper['title']}:")
+        print(f"Summary: {analysis.get('summary', 'No summary available')}")
+        print(f"Tokens Used: {analysis.get('tokens_used', 'N/A')}")
+        print(f"Processing Time: {analysis.get('processing_time', 'N/A')}")
 
-    # Try different features
-    print("\n1. Testing semantic search...")
-    results, search_time = await assistant.semantic_search_cached("deep learning")
-    print(f"Search completed in {search_time:.2f} seconds")
-    print(f"Found {len(results)} relevant papers")
-    for paper in results:
-        print(f"- {paper.title}")
-
-    print("\n2. Generating visualizations...")
-    # Create and save citation network visualization
-    citation_fig = assistant.visualize_citation_network()
-    citation_fig.write_html("citation_network.html")
-    print("Citation network visualization saved as 'citation_network.html'")
-
-    # Create and save concept trends visualization
-    trends_fig = assistant.visualize_concept_trends()
-    trends_fig.write_html("concept_trends.html")
-    print("Concept trends visualization saved as 'concept_trends.html'")
-
-    print("\n3. Testing batch analysis...")
-    analysis_results = await assistant.analyze_batch(sample_papers)
-    print("Batch analysis completed")
-    print(f"Found concepts: {analysis_results['concepts']}")
+    # Perform semantic search
+    print("\nSemantic Search Results:")
+    search_results = await assistant.semantic_search(
+        "machine learning optimization", 
+        list(assistant.papers.values())
+    )
+    
+    for result in search_results:
+        print(f"- {result['title']}")
+        print(f"  Relevance Notes: {result.get('relevance_description', 'No details')}")
+        print()
 
 if __name__ == "__main__":
-    # Set up required packages
-    try:
-        import numpy as np
-        import networkx as nx
-        import plotly.graph_objects as go
-        import plotly.express as px
-        from cerebras_cloud_sdk import CerebrasCloudAPI
-    except ImportError:
-        print("Installing required packages...")
-        os.system("pip install numpy networkx plotly cerebras-cloud-sdk-python")
-
-    # Run the example
-    asyncio.run(run_example())
+    asyncio.run(main())
