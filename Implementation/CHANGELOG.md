@@ -7,6 +7,19 @@ This folder contains the core code for the Cerebras Inference Project. We will a
 
 ---
 
+## [v0.3.0] - 2024-12-06 (Third Push)
+### Added
+- **Error Handling**:
+  - Added comprehensive error handling throughout the application
+  - Implemented fallback mechanisms for database operations
+  - Added try-except blocks to prevent application crashes
+
+- **Demonstration Mode**:
+  - Created a demo paper ingestion method for easier testing
+  - Removed dependencies on external APIs to simplify initial setup
+
+---
+
 ## [v0.2.0] - 2024-12-05 (Second Push)
 ### Added
 - **Visualization Output**:
