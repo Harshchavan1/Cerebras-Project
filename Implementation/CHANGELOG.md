@@ -7,6 +7,18 @@ This folder contains the core code for the Cerebras Inference Project. We will a
 
 ---
 
+## [v0.5.0] - 2024-12-06 (4th Push)
+### Added
+- **Frontend**:
+  - Frontend Update(Added Performance Metrics)
+- **Backend**:
+  - Defined Methods
+### Pending
+- **Backend**:
+  - Scholarly IP being blocked. 
+
+---
+
 ## [v0.4.0] - 2024-12-06 (4th Push)
 ### Added
 - **Frontend**:
@@ -16,7 +28,6 @@ This folder contains the core code for the Cerebras Inference Project. We will a
 ### Pending
 - **Frontend**:
   - Define the undefined methods.  
-
 
 ---
 
