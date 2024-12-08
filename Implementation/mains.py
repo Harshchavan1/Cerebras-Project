@@ -3,6 +3,7 @@ import re
 import json
 import sqlite3
 import logging
+import scholarly 
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
@@ -31,6 +32,70 @@ class CebrasCitationExtractor:
         self.client = cerebras_client
         self.model_name = model_name
 
+    def update_database_from_scholarly(self, query: str, max_papers: int = 10) -> Dict[str, Any]:
+        """
+        Update the database with papers fetched from Scholarly
+        
+        Args:
+            query (str): Search query for research papers
+            max_papers (int): Maximum number of papers to fetch and ingest
+        
+        Returns:
+            Dict with update statistics
+        """
+        try:
+            # Search for publications
+            search_query = scholarly.search_pubs(query)
+            
+            # Track ingestion statistics
+            ingested_papers = 0
+            skipped_papers = 0
+            
+            # Iterate through search results
+            for _ in range(max_papers):
+                try:
+                    # Fetch the next publication
+                    pub = next(search_query)
+                    
+                    # Extract paper details
+                    paper_data = {
+                        'title': pub.get('bib', {}).get('title', 'Unknown Title'),
+                        'authors': pub.get('bib', {}).get('author', []),
+                        'doi': pub.get('bib', {}).get('doi', f'scholarly-{hash(pub.get("bib", {}).get("title", ""))}'),
+                        'citations': [],  # Scholarly might provide citation information
+                        'source': 'Scholarly',
+                        'content': pub.get('bib', {}).get('abstract', 'No abstract available')
+                    }
+                    
+                    # Attempt to ingest the paper
+                    ingest_result = self.ingest_paper(paper_data)
+                    
+                    if ingest_result.get('status') == 'success':
+                        ingested_papers += 1
+                    else:
+                        skipped_papers += 1
+                
+                except StopIteration:
+                    # No more publications to process
+                    break
+                except Exception as pub_error:
+                    logger.error(f"Error processing publication: {pub_error}")
+                    skipped_papers += 1
+            
+            return {
+                'status': 'success',
+                'ingested_papers': ingested_papers,
+                'skipped_papers': skipped_papers,
+                'query': query
+            }
+        
+        except Exception as e:
+            logger.error(f"Scholarly database update error: {e}")
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+        
     def extract_paper_details(self, raw_content: str) -> Dict[str, Any]:
         """
         Extract structured paper details using Cerebras AI
@@ -245,7 +310,60 @@ class ScientificLiteratureExplorer:
                 conn.commit()
         except sqlite3.Error as e:
             logger.error(f"Database setup error: {e}")
-
+    def update_database_from_scholarly(self, query: str, max_papers: int = 10) -> Dict[str, Any]:
+        """
+        Update the database with papers fetched from Scholarly
+        """
+        try:
+            # Use scholarly.search_pubs() instead of search_publication()
+            search_query = scholarly.search_pubs_query(query)
+            
+            ingested_papers = 0
+            skipped_papers = 0
+            
+            for _ in range(max_papers):
+                try:
+                    pub = next(search_query)
+                    
+                    # Safely extract publication details
+                    bib_data = pub.get('bib', {})
+                    
+                    paper_data = {
+                        'title': bib_data.get('title', 'Unknown Title'),
+                        'authors': bib_data.get('author', []),
+                        'doi': bib_data.get('doi', f'scholarly-{hash(bib_data.get("title", ""))}'),
+                        'citations': [],
+                        'source': 'Scholarly',
+                        'content': bib_data.get('abstract', 'No abstract available')
+                    }
+                    
+                    ingest_result = self.ingest_paper(paper_data)
+                    
+                    if ingest_result.get('status') == 'success':
+                        ingested_papers += 1
+                    else:
+                        skipped_papers += 1
+            
+                except StopIteration:
+                    break
+                except Exception as pub_error:
+                    logger.error(f"Error processing publication: {pub_error}")
+                    skipped_papers += 1
+            
+            return {
+                'status': 'success',
+                'ingested_papers': ingested_papers,
+                'skipped_papers': skipped_papers,
+                'query': query
+            }
+        
+        except Exception as e:
+            logger.error(f"Scholarly database update error: {e}")
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+        
     def load_papers(self) -> List[Dict[str, Any]]:
         """
         Load existing papers from the database
@@ -390,12 +508,6 @@ class ScientificLiteratureExplorer:
     def analyze_research_trends(self, time_window: int = 2) -> Dict[str, Any]:
         """
         Analyze research trends and emerging domains
-        
-        Args:
-            time_window (int): Number of years to consider for trend analysis
-        
-        Returns:
-            Comprehensive research trend analysis
         """
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -417,11 +529,31 @@ class ScientificLiteratureExplorer:
                 
                 trend_analysis_prompt = f"""
                 Analyze research trends in this consolidated content:
-                
+
                 Content: {consolidated_content[:4000]}
-                
-                Provide a JSON response with emerging domains, research momentum, 
-                and innovation landscape insights.
+
+                Provide a VALID JSON response with EXACT MATCHING keys:
+                {{
+                    "emerging_domains": [
+                        {{
+                            "domain_name": "String",
+                            "growth_potential": "String",
+                            "key_characteristics": ["String"],
+                            "interdisciplinary_overlap": ["String"]
+                        }}
+                    ],
+                    "research_momentum_indicators": {{
+                        "most_active_research_areas": ["String"],
+                        "declining_research_interests": ["String"]
+                    }},
+                    "innovation_landscape": {{
+                        "breakthrough_potential_domains": ["String"]
+                    }},
+                    "global_research_sentiment": {{
+                        "optimism_index": "String",
+                        "collaborative_intensity": "String"
+                    }}
+                }}
                 """
                 
                 response = self.paper_fetcher.client.chat.completions.create(
@@ -435,7 +567,6 @@ class ScientificLiteratureExplorer:
         except Exception as e:
             logger.error(f"Research trend analysis error: {e}")
             return {"status": "error", "message": str(e)}
-
 # Optional: Add main block for direct script testing
 if __name__ == "__main__":
     explorer = ScientificLiteratureExplorer()
